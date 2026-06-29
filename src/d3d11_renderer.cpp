@@ -25,8 +25,9 @@ static ID3D11Buffer*           g_vb       = nullptr;
 static ID3D11RenderTargetView* g_backbuffer_rtv = nullptr;
 static IDXGIOutput*            g_output         = nullptr;
 
-static ID3D11Texture2D*          g_captured_tex  = nullptr;
-static ID3D11ShaderResourceView* g_captured_srv  = nullptr;
+// Our own copy of the desktop frame (survives ReleaseFrame)
+static ID3D11Texture2D*          g_desktop_copy     = nullptr;
+static ID3D11ShaderResourceView* g_desktop_copy_srv = nullptr;
 
 // Intermediate render targets for multi-effect compositing (ping-pong)
 static ID3D11Texture2D*          g_temp_tex[2]   = {nullptr, nullptr};
@@ -224,6 +225,22 @@ void renderer_resize(int w, int h) {
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
 
+    // Recreate our desktop copy texture
+    if (g_desktop_copy_srv) { g_desktop_copy_srv->Release(); g_desktop_copy_srv = nullptr; }
+    if (g_desktop_copy)     { g_desktop_copy->Release(); g_desktop_copy = nullptr; }
+
+    D3D11_TEXTURE2D_DESC copy_desc = {};
+    copy_desc.Width  = w;
+    copy_desc.Height = h;
+    copy_desc.MipLevels = 1;
+    copy_desc.ArraySize = 1;
+    copy_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    copy_desc.SampleDesc.Count = 1;
+    copy_desc.Usage = D3D11_USAGE_DEFAULT;
+    copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    g_device->CreateTexture2D(&copy_desc, nullptr, &g_desktop_copy);
+    g_device->CreateShaderResourceView(g_desktop_copy, nullptr, &g_desktop_copy_srv);
+
     if (g_swapchain) {
         g_ctx->OMSetRenderTargets(0, nullptr, nullptr);
         g_swapchain->ResizeBuffers(1, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
@@ -250,8 +267,7 @@ void renderer_resize(int w, int h) {
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     if (!g_dupl || !g_ctx) return;
 
-    // --- Acquire desktop frame (or reuse cached on timeout) ---
-    bool new_frame = false;
+    // --- Acquire desktop frame ---
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
     HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
@@ -269,46 +285,32 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     }
 
     if (SUCCEEDED(hr)) {
-        new_frame = true;
-
-        // Release previous captured texture
-        if (g_captured_tex) { g_captured_tex->Release(); g_captured_tex = nullptr; }
-        if (g_captured_srv) { g_captured_srv->Release(); g_captured_srv = nullptr; }
-
-        hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&g_captured_tex);
+        // Acquired a new frame — copy it into our own texture before ReleaseFrame
+        ID3D11Texture2D* src_tex = nullptr;
+        hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&src_tex);
         desktop_resource->Release();
-        if (SUCCEEDED(hr)) {
-            D3D11_TEXTURE2D_DESC tex_desc;
-            g_captured_tex->GetDesc(&tex_desc);
 
-            D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-            srv_desc.Format = tex_desc.Format;
-            srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-            srv_desc.Texture2D.MipLevels = 1;
-            g_device->CreateShaderResourceView(g_captured_tex, &srv_desc, &g_captured_srv);
+        if (SUCCEEDED(hr) && g_desktop_copy && g_desktop_copy_srv) {
+            g_ctx->CopyResource(g_desktop_copy, src_tex);
+            src_tex->Release();
+        } else if (SUCCEEDED(hr)) {
+            src_tex->Release();
         }
+
+        g_dupl->ReleaseFrame();
     }
 
-    // If no cached frame available yet, nothing to render
-    if (!g_captured_srv) {
-        if (new_frame) g_dupl->ReleaseFrame();
-        return;
-    }
+    // If we don't have our copy yet, nothing to render
+    if (!g_desktop_copy_srv) return;
 
     // --- Multi-effect compositing with ping-pong ---
     int N = (int)active_shaders.size();
-    if (N == 0) {
-        if (new_frame) g_dupl->ReleaseFrame();
-        return;
-    }
+    if (N == 0) return;
 
-    if (!g_backbuffer_rtv) {
-        if (new_frame) g_dupl->ReleaseFrame();
-        return;
-    }
+    if (!g_backbuffer_rtv) return;
 
     ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
-    ID3D11ShaderResourceView* src_srv = g_captured_srv;
+    ID3D11ShaderResourceView* src_srv = g_desktop_copy_srv;
     int dst_idx = 0;
 
     for (int i = 0; i < N; i++) {
@@ -338,15 +340,14 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     }
 
     g_swapchain->Present(1, 0);
-    if (new_frame) g_dupl->ReleaseFrame();
 }
 
 void renderer_shutdown() {
     if (g_backbuffer_rtv) { g_backbuffer_rtv->Release(); g_backbuffer_rtv = nullptr; }
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
-    if (g_captured_srv) g_captured_srv->Release();
-    if (g_captured_tex) g_captured_tex->Release();
+    if (g_desktop_copy_srv) { g_desktop_copy_srv->Release(); }
+    if (g_desktop_copy)     { g_desktop_copy->Release(); }
     if (g_vb) g_vb->Release();
     if (g_dupl) g_dupl->Release();
     if (g_output) g_output->Release();
