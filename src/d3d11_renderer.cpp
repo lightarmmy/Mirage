@@ -344,6 +344,10 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
             src_srv = g_temp_srv[1 - dst_idx];
         }
 
+        // Ensure viewport matches render target (fixes layered window artifacts)
+        D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)g_width, (float)g_height, 0.0f, 1.0f };
+        g_ctx->RSSetViewports(1, &vp);
+
         g_ctx->PSSetShader(active_shaders[i]->ps, nullptr, 0);
         g_ctx->PSSetShaderResources(0, 1, &src_srv);
         g_ctx->PSSetConstantBuffers(0, 1, &active_shaders[i]->cbuffer);

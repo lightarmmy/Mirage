@@ -26,7 +26,7 @@
       "name": "Window Edge Glow",
       "shader": "shaders/edge_glow.hlsl",
       "hotkey": { "keys": ["ctrl", "shift", "e"], "mode": "toggle" },
-      "params": { "width": 12.0, "intensity": 1.2 }
+      "params": { "width": 16.0, "intensity": 1.5 }
     },
     {
       "id": "window_jiggle",
