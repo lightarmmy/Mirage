@@ -2,7 +2,6 @@
 #include "config_manager.h"
 #include <bitset>
 #include <unordered_map>
-#include <chrono>
 
 static HHOOK g_keyboard_hook = nullptr;
 static std::bitset<256> g_key_state;
@@ -68,10 +67,6 @@ static void init_vk_map() {
     for (char c = '0'; c <= '9'; c++) {
         g_name_to_vk[std::string(1, c)] = (UINT)(c - '0' + '0');
     }
-}
-
-static bool is_modifier_name(const std::string& key) {
-    return key == "ctrl" || key == "shift" || key == "alt" || key == "win";
 }
 
 static bool is_key_down(const std::string& key) {
