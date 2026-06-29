@@ -80,6 +80,7 @@ static void release_intermediate_texture(
 
 bool renderer_init(HWND hwnd) {
     g_hwnd = hwnd;
+    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     g_width  = GetSystemMetrics(SM_CXSCREEN);
     g_height = GetSystemMetrics(SM_CYSCREEN);
 
@@ -279,13 +280,7 @@ void renderer_resize(int w, int h) {
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     if (!g_dupl || !g_ctx) return;
 
-    // --- Step 1: Hide overlay so next capture doesn't include our effect ---
-    if (g_hwnd) {
-        SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_HIDEWINDOW);
-    }
-
-    // --- Step 2: Capture clean desktop (without our overlay) ---
+    // --- Acquire desktop frame (non-blocking) ---
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
     HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
@@ -299,9 +294,6 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
                 output1->Release();
             }
         }
-        // Show window even on error
-        if (g_hwnd) SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         return;
     }
 
@@ -324,15 +316,9 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         g_dupl->ReleaseFrame();
     }
 
-    // --- Step 3: Show overlay again ---
-    if (g_hwnd) {
-        SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    }
-
     if (!g_has_first_frame) return;
 
-    // --- Step 4: Render effects on top of clean desktop capture ---
+    // --- Render effects ---
     int N = (int)active_shaders.size();
     if (N == 0) return;
     if (!g_backbuffer_rtv) return;
