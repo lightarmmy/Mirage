@@ -428,10 +428,15 @@ struct EnumCtx { float* rects; int remaining; int sw; int sh; };
 static bool is_desktop_or_own_window(HWND hwnd) {
     wchar_t cls[64];
     if (!GetClassNameW(hwnd, cls, 64)) return false;
-    return (_wcsicmp(cls, L"Progman") == 0 ||
-            _wcsicmp(cls, L"WorkerW") == 0 ||
-            _wcsicmp(cls, L"Shell_TrayWnd") == 0 ||
-            _wcsicmp(cls, L"MirageOverlay") == 0);
+    if (_wcsicmp(cls, L"Progman") == 0) return true;
+    if (_wcsicmp(cls, L"WorkerW") == 0) return true;
+    if (_wcsicmp(cls, L"Shell_TrayWnd") == 0) return true;
+    if (_wcsicmp(cls, L"MirageOverlay") == 0) return true;
+    if (_wcsicmp(cls, L"CEF-OSC-WIDGET") == 0) return true;       // NVIDIA Overlay
+    if (_wcsicmp(cls, L"Windows.UI.Core.CoreWindow") == 0) return true; // UWP chrome
+    if (_wcsicmp(cls, L"DummyDWMListenerWindow") == 0) return true;
+    if (_wcsicmp(cls, L"ThumbnailDeviceHelperWnd") == 0) return true;
+    return false;
 }
 
 static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
