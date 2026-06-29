@@ -30,7 +30,7 @@ HWND create_overlay_window(HINSTANCE hInstance, int width, int height) {
     wc.hInstance     = hInstance;
     wc.lpszClassName = WINDOW_CLASS;
     wc.hCursor       = nullptr;
-    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hbrBackground = nullptr; // no background — layered window uses per-pixel alpha
 
     static bool registered = false;
     if (!registered) {
