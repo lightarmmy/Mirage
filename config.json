@@ -33,7 +33,7 @@
       "name": "Window Jiggle",
       "shader": "shaders/window_jiggle.hlsl",
       "hotkey": { "keys": ["ctrl", "shift", "j"], "mode": "toggle" },
-      "params": { "amount": 3.0, "speed": 5.0 }
+      "params": { "amount": 6.0, "speed": 4.0 }
     }
   ]
 }

@@ -1,5 +1,5 @@
-// Window Edge Jiggle — window borders wobble organically, interior stable
-// Params: amount = edge displacement in pixels, speed = oscillation frequency
+// Window Edge Jiggle — borders wobble with multi-frequency oscillation
+// Params: amount = max edge displacement (pixels), speed = wobble frequency
 
 float hash_noise(uint n) {
     n = (n << 13U) ^ n;
@@ -8,55 +8,50 @@ float hash_noise(uint n) {
 
 float4 main(PS_INPUT input) : SV_TARGET {
     float2 pixel = input.uv * u_resolution;
-    float2 sample_uv = input.uv;
-    float total_jiggle = 0.0;
-    float2 jiggle_offset = float2(0, 0);
+    float2 disp = float2(0, 0);
+    float total_w = 0.0;
 
     for (uint i = 0; i < u_window_count && i < 64; i++) {
         float4 wr = u_window_rects[i];
 
-        // Is pixel inside or near this window?
-        if (pixel.x < wr.x - u_param_amount || pixel.x > wr.z + u_param_amount ||
-            pixel.y < wr.y - u_param_amount || pixel.y > wr.w + u_param_amount) continue;
+        // Quick AABB rejection (include jiggle range)
+        if (pixel.x < wr.x - u_param_amount * 3 || pixel.x > wr.z + u_param_amount * 3 ||
+            pixel.y < wr.y - u_param_amount * 3 || pixel.y > wr.w + u_param_amount * 3) continue;
 
-        // Compute edge distance: 0 at edge, grows toward center, grows outside
-        float dl = pixel.x - wr.x;
-        float dr = wr.z - pixel.x;
-        float dt = pixel.y - wr.y;
-        float db = wr.w - pixel.y;
+        // Distance to each edge
+        float dl = pixel.x - wr.x, dr = wr.z - pixel.x;
+        float dt = pixel.y - wr.y, db = wr.w - pixel.y;
 
-        float edge_dist = min(min(abs(dl), abs(dr)), min(abs(dt), abs(db)));
-        bool is_inside = (dl >= 0 && dr >= 0 && dt >= 0 && db >= 0);
+        // Edge influence falls off with distance from edge
+        float e_left   = exp(-abs(dl) / u_param_amount);
+        float e_right  = exp(-abs(dr) / u_param_amount);
+        float e_top    = exp(-abs(dt) / u_param_amount);
+        float e_bottom = exp(-abs(db) / u_param_amount);
 
-        // Jiggle only near edges — fade exponentially toward center/outside
-        float influence = exp(-edge_dist / u_param_amount);
-        if (influence < 0.01) continue;
-
-        // Per-window phase and multi-frequency wobble
         float phase = hash_noise(i) * 6.2832;
-        float wx = (pixel.x - wr.x) / max(wr.z - wr.x, 1.0f);
-        float wy = (pixel.y - wr.y) / max(wr.w - wr.y, 1.0f);
 
-        // Primary oscillation perpendicular to nearest edge
-        float wave = sin(u_time * u_param_speed * 3.0 + phase)
-                   + sin(u_time * u_param_speed * 4.7 + phase * 1.3) * 0.5
-                   + sin(u_time * u_param_speed * 7.1 + phase * 0.7) * 0.25;
+        // Multi-frequency wobble
+        float wave_l = sin(u_time * u_param_speed * 2.5 + phase)
+                     + cos(u_time * u_param_speed * 4.0 + phase * 1.7) * 0.6;
 
-        float disp = wave * u_param_amount * influence;
+        float wave_r = sin(u_time * u_param_speed * 2.5 + phase + 0.5)
+                     + cos(u_time * u_param_speed * 4.0 + phase * 1.7 + 0.5) * 0.6;
 
-        // Displace primarily perpendicular to nearest edge
-        float2 dir;
-        if      (abs(dl) <= abs(dr) && abs(dl) <= abs(dt) && abs(dl) <= abs(db)) dir = float2(-1, 0);
-        else if (abs(dr) <= abs(dl) && abs(dr) <= abs(dt) && abs(dr) <= abs(db)) dir = float2( 1, 0);
-        else if (abs(dt) <= abs(dl) && abs(dt) <= abs(dr) && abs(dt) <= abs(db)) dir = float2( 0,-1);
-        else                                                                     dir = float2( 0, 1);
+        float wave_t = sin(u_time * u_param_speed * 2.8 + phase + 1.0)
+                     + cos(u_time * u_param_speed * 3.5 + phase * 1.3 + 1.0) * 0.6;
 
-        jiggle_offset += dir * disp / u_resolution;
-        total_jiggle += influence;
+        float wave_b = sin(u_time * u_param_speed * 2.8 + phase + 1.5)
+                     + cos(u_time * u_param_speed * 3.5 + phase * 1.3 + 1.5) * 0.6;
+
+        // Displace perpendicular to edge
+        disp.x += (-wave_l * e_left + wave_r * e_right) * u_param_amount / u_resolution.x;
+        disp.y += (-wave_t * e_top + wave_b * e_bottom) * u_param_amount / u_resolution.y;
+        total_w += e_left + e_right + e_top + e_bottom;
     }
 
-    if (total_jiggle > 0.0) {
-        sample_uv = input.uv + jiggle_offset;
+    float2 sample_uv = input.uv;
+    if (total_w > 0.01) {
+        sample_uv = input.uv + disp;
     }
 
     return u_scene.Sample(u_sampler, sample_uv);

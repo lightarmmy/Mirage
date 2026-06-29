@@ -1,44 +1,43 @@
-// Window Edge Glow — blue glow around visible window borders
+// Window Edge Glow — glow matches local window border color
 // Params: width = glow pixel radius, intensity = brightness
 
 float4 main(PS_INPUT input) : SV_TARGET {
     float4 color = u_scene.Sample(u_sampler, input.uv);
     float2 pixel = input.uv * u_resolution;
-    float max_range = u_param_width * 4.0; // skip windows beyond this distance
+    float max_range = u_param_width * 5.0;
     float inv_width = 1.0 / max(u_param_width, 1.0);
 
     for (uint i = 0; i < u_window_count && i < 64; i++) {
         float4 wr = u_window_rects[i];
 
-        // Fast AABB early-out: skip if pixel is far from this window
+        // Fast AABB early-out
         float2 closest = clamp(pixel, wr.xy, wr.zw);
-        float quick_dist = length(pixel - closest);
-        if (quick_dist > max_range) continue;
+        if (length(pixel - closest) > max_range) continue;
 
-        // Compute precise distance to nearest edge (signed)
-        float left   = pixel.x - wr.x;
-        float right  = wr.z - pixel.x;
-        float top    = pixel.y - wr.y;
-        float bottom = wr.w - pixel.y;
+        // Edge distance (signed)
+        float dl = pixel.x - wr.x, dr = wr.z - pixel.x;
+        float dt = pixel.y - wr.y, db = wr.w - pixel.y;
+        float inside_margin = min(min(dl, dr), min(dt, db));
+        bool in_window = (inside_margin >= 0.0);
 
-        float inside_x = min(left, right);
-        float inside_y = min(top, bottom);
-        bool is_inside = (inside_x >= 0.0 && inside_y >= 0.0);
-
-        float dist;
-        if (is_inside) {
-            dist = min(inside_x, inside_y); // positive = distance inside from edge
+        float edge_dist;
+        if (in_window) {
+            edge_dist = inside_margin;
         } else {
-            // Distance to nearest corner or edge from outside
-            float dx = max(-left, max(0.0f, -right));
-            float dy = max(-top,  max(0.0f, -bottom));
-            dist = -sqrt(dx * dx + dy * dy); // negative = outside
+            float dx = dl > 0 ? max(0.0f, -dr) : -dl;
+            float dy = dt > 0 ? max(0.0f, -db) : -dt;
+            edge_dist = -sqrt(dx * dx + dy * dy);
         }
 
-        // Glow on both sides of the edge, fading with distance
-        float glow = exp(-abs(dist) * inv_width) * u_param_intensity;
-        color.rgb += glow * float3(0.15, 0.55, 1.0);
+        float glow = exp(-abs(edge_dist) * inv_width) * u_param_intensity;
+        if (glow < 0.005) continue;
+
+        // Sample edge color from 3px inside the window
+        float2 edge_uv = clamp(pixel, wr.xy + 3.0, wr.zw - 3.0) / u_resolution;
+        float3 edge_color = u_scene.Sample(u_sampler, edge_uv).rgb;
+
+        color.rgb = lerp(color.rgb, edge_color, glow);
     }
 
-    return saturate(color);
+    return color;
 }

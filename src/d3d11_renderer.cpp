@@ -380,12 +380,13 @@ int renderer_width()  { return g_width; }
 
 struct EnumCtx { float* rects; int remaining; int sw; int sh; };
 
-static bool is_desktop_window(HWND hwnd) {
+static bool is_desktop_or_own_window(HWND hwnd) {
     wchar_t cls[64];
     if (!GetClassNameW(hwnd, cls, 64)) return false;
     return (_wcsicmp(cls, L"Progman") == 0 ||
             _wcsicmp(cls, L"WorkerW") == 0 ||
-            _wcsicmp(cls, L"Shell_TrayWnd") == 0);
+            _wcsicmp(cls, L"Shell_TrayWnd") == 0 ||
+            _wcsicmp(cls, L"MirageOverlay") == 0);
 }
 
 static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
@@ -393,7 +394,7 @@ static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
     if (ctx->remaining <= 0) return FALSE;
     if (!IsWindowVisible(hwnd)) return TRUE;
     if (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) return TRUE;
-    if (is_desktop_window(hwnd)) return TRUE;
+    if (is_desktop_or_own_window(hwnd)) return TRUE;
 
     RECT r;
     if (GetWindowRect(hwnd, &r)) {
