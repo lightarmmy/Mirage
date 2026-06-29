@@ -81,8 +81,6 @@ static void release_intermediate_texture(
 bool renderer_init(HWND hwnd) {
     g_hwnd = hwnd;
     SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-    g_width  = GetSystemMetrics(SM_CXSCREEN);
-    g_height = GetSystemMetrics(SM_CYSCREEN);
 
     // --- Find the adapter driving the primary desktop ---
     IDXGIFactory1* factory = nullptr;
@@ -128,7 +126,6 @@ bool renderer_init(HWND hwnd) {
     );
 
     if (FAILED(hr)) {
-        // Fallback: use default adapter
         hr = D3D11CreateDevice(
             nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
             nullptr, 0, D3D11_SDK_VERSION,
@@ -150,7 +147,31 @@ bool renderer_init(HWND hwnd) {
 
     if (!g_dupl) return false;
 
-    // --- SwapChain (flip model for proper VSync at any refresh rate) ---
+    // --- Probe DD to get actual capture resolution (may differ from GetSystemMetrics on scaled displays) ---
+    g_width  = GetSystemMetrics(SM_CXSCREEN);
+    g_height = GetSystemMetrics(SM_CYSCREEN);
+
+    {
+        IDXGIResource* probe = nullptr;
+        DXGI_OUTDUPL_FRAME_INFO probe_info;
+        if (SUCCEEDED(g_dupl->AcquireNextFrame(250, &probe_info, &probe))) {
+            ID3D11Texture2D* probe_tex = nullptr;
+            if (SUCCEEDED(probe->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&probe_tex))) {
+                D3D11_TEXTURE2D_DESC desc;
+                probe_tex->GetDesc(&desc);
+                g_width  = (int)desc.Width;
+                g_height = (int)desc.Height;
+                probe_tex->Release();
+            }
+            probe->Release();
+            g_dupl->ReleaseFrame();
+        }
+    }
+
+    // Resize window to match actual DD resolution
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, g_width, g_height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+    // --- SwapChain (flip model, matching DD resolution) ---
     DXGI_SWAP_CHAIN_DESC sc_desc = {};
     sc_desc.BufferCount = 2;
     sc_desc.BufferDesc.Width  = g_width;
