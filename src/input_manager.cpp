@@ -70,12 +70,12 @@ static void init_vk_map() {
 }
 
 static bool is_key_down(const std::string& key) {
+    if (key == "ctrl")  return (GetAsyncKeyState(VK_LCONTROL) & 0x8000) || (GetAsyncKeyState(VK_RCONTROL) & 0x8000);
+    if (key == "shift") return (GetAsyncKeyState(VK_LSHIFT) & 0x8000) || (GetAsyncKeyState(VK_RSHIFT) & 0x8000);
+    if (key == "alt")   return (GetAsyncKeyState(VK_LMENU) & 0x8000) || (GetAsyncKeyState(VK_RMENU) & 0x8000);
+    if (key == "win")   return (GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000);
     UINT vk = g_name_to_vk.at(key);
-    if (key == "ctrl")  return g_key_state[VK_LCONTROL] || g_key_state[VK_RCONTROL];
-    if (key == "shift") return g_key_state[VK_LSHIFT] || g_key_state[VK_RSHIFT];
-    if (key == "alt")   return g_key_state[VK_LMENU] || g_key_state[VK_RMENU];
-    if (key == "win")   return g_key_state[VK_LWIN] || g_key_state[VK_RWIN];
-    return g_key_state[vk];
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
 bool input_init() {

@@ -18,7 +18,7 @@ static Config build_defaults() {
         },
         {
             "warm_color", "Warm Color Temp", "shaders/warm_color.hlsl", "toggle",
-            {"ctrl", "shift", "w"}, {{"temperature", 6500.0f}}
+            {"ctrl", "shift", "w"}, {{"temperature", 3000.0f}}
         },
     };
     return c;

@@ -25,12 +25,12 @@ static ID3D11Buffer*           g_vb       = nullptr;
 static ID3D11RenderTargetView* g_backbuffer_rtv = nullptr;
 static IDXGIOutput*            g_output         = nullptr;
 
-// Our own copy of the desktop frame (survives ReleaseFrame)
-static ID3D11Texture2D*          g_desktop_copy     = nullptr;
-static ID3D11ShaderResourceView* g_desktop_copy_srv = nullptr;
-
-// GPU sync query for CopyResource → ReleaseFrame ordering
-static ID3D11Query* g_copy_done_query = nullptr;
+// Double-buffered desktop copies (keep GPU async without sync stalls)
+static ID3D11Texture2D*          g_desktop_copy[2]     = {nullptr, nullptr};
+static ID3D11ShaderResourceView* g_desktop_copy_srv[2] = {nullptr, nullptr};
+static int g_copy_write_idx = 0; // which buffer to CopyResource INTO
+static int g_copy_read_idx  = 1; // which buffer to render FROM
+static bool g_has_first_frame = false;
 
 // Intermediate render targets for multi-effect compositing (ping-pong)
 static ID3D11Texture2D*          g_temp_tex[2]   = {nullptr, nullptr};
@@ -197,10 +197,6 @@ bool renderer_init(HWND hwnd) {
     g_ctx->PSSetSamplers(0, 1, &sampler);
     sampler->Release(); // ref held by context
 
-    // GPU sync query for safe CopyResource → ReleaseFrame ordering
-    D3D11_QUERY_DESC qdesc = { D3D11_QUERY_EVENT, 0 };
-    g_device->CreateQuery(&qdesc, &g_copy_done_query);
-
     // Disable back-face culling — full-screen triangle reverses winding in screen space
     D3D11_RASTERIZER_DESC rs_desc = {};
     rs_desc.FillMode = D3D11_FILL_SOLID;
@@ -232,21 +228,28 @@ void renderer_resize(int w, int h) {
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
 
-    // Recreate our desktop copy texture
-    if (g_desktop_copy_srv) { g_desktop_copy_srv->Release(); g_desktop_copy_srv = nullptr; }
-    if (g_desktop_copy)     { g_desktop_copy->Release(); g_desktop_copy = nullptr; }
+    // Recreate our double-buffered desktop copy textures
+    for (int i = 0; i < 2; i++) {
+        if (g_desktop_copy_srv[i]) { g_desktop_copy_srv[i]->Release(); g_desktop_copy_srv[i] = nullptr; }
+        if (g_desktop_copy[i])     { g_desktop_copy[i]->Release(); g_desktop_copy[i] = nullptr; }
+    }
+    g_has_first_frame = false;
+    g_copy_write_idx = 0;
+    g_copy_read_idx = 1;
 
-    D3D11_TEXTURE2D_DESC copy_desc = {};
-    copy_desc.Width  = w;
-    copy_desc.Height = h;
-    copy_desc.MipLevels = 1;
-    copy_desc.ArraySize = 1;
-    copy_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    copy_desc.SampleDesc.Count = 1;
-    copy_desc.Usage = D3D11_USAGE_DEFAULT;
-    copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    g_device->CreateTexture2D(&copy_desc, nullptr, &g_desktop_copy);
-    g_device->CreateShaderResourceView(g_desktop_copy, nullptr, &g_desktop_copy_srv);
+    for (int i = 0; i < 2; i++) {
+        D3D11_TEXTURE2D_DESC copy_desc = {};
+        copy_desc.Width  = w;
+        copy_desc.Height = h;
+        copy_desc.MipLevels = 1;
+        copy_desc.ArraySize = 1;
+        copy_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        copy_desc.SampleDesc.Count = 1;
+        copy_desc.Usage = D3D11_USAGE_DEFAULT;
+        copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        g_device->CreateTexture2D(&copy_desc, nullptr, &g_desktop_copy[i]);
+        g_device->CreateShaderResourceView(g_desktop_copy[i], nullptr, &g_desktop_copy_srv[i]);
+    }
 
     if (g_swapchain) {
         g_ctx->OMSetRenderTargets(0, nullptr, nullptr);
@@ -274,10 +277,10 @@ void renderer_resize(int w, int h) {
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     if (!g_dupl || !g_ctx) return;
 
-    // --- Acquire desktop frame ---
+    // --- Acquire desktop frame (non-blocking poll) ---
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
-    HRESULT hr = g_dupl->AcquireNextFrame(16, &frame_info, &desktop_resource);
+    HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
         g_dupl->Release(); g_dupl = nullptr;
@@ -292,37 +295,36 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     }
 
     if (SUCCEEDED(hr)) {
-        // Acquired a new frame — copy to own texture, sync GPU, then release
+        // Got a new frame — copy into write buffer, then immediately release
         ID3D11Texture2D* src_tex = nullptr;
         hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&src_tex);
         desktop_resource->Release();
 
-        if (SUCCEEDED(hr) && g_desktop_copy && g_desktop_copy_srv) {
-            g_ctx->CopyResource(g_desktop_copy, src_tex);
+        if (SUCCEEDED(hr) && g_desktop_copy[g_copy_write_idx]) {
+            g_ctx->CopyResource(g_desktop_copy[g_copy_write_idx], src_tex);
             src_tex->Release();
 
-            // GPU sync: ensure CopyResource completes before ReleaseFrame
-            g_ctx->End(g_copy_done_query);
-            while (g_ctx->GetData(g_copy_done_query, nullptr, 0, 0) == S_FALSE) {}
+            // Swap buffers: what we just wrote becomes the new read buffer
+            g_copy_read_idx = g_copy_write_idx;
+            g_copy_write_idx = 1 - g_copy_write_idx;
+            g_has_first_frame = true;
         } else if (SUCCEEDED(hr)) {
             src_tex->Release();
         }
 
         g_dupl->ReleaseFrame();
     }
-    // On timeout: g_desktop_copy still contains the last successfully copied frame
 
-    // If we don't have our copy yet (first frame not acquired), nothing to render
-    if (!g_desktop_copy_srv) return;
+    // Don't render until we have at least one captured frame
+    if (!g_has_first_frame) return;
 
     // --- Multi-effect compositing with ping-pong ---
     int N = (int)active_shaders.size();
     if (N == 0) return;
-
     if (!g_backbuffer_rtv) return;
 
     ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
-    ID3D11ShaderResourceView* src_srv = g_desktop_copy_srv;
+    ID3D11ShaderResourceView* src_srv = g_desktop_copy_srv[g_copy_read_idx];
     int dst_idx = 0;
 
     for (int i = 0; i < N; i++) {
@@ -358,9 +360,10 @@ void renderer_shutdown() {
     if (g_backbuffer_rtv) { g_backbuffer_rtv->Release(); g_backbuffer_rtv = nullptr; }
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
-    if (g_desktop_copy_srv) { g_desktop_copy_srv->Release(); }
-    if (g_desktop_copy)     { g_desktop_copy->Release(); }
-    if (g_copy_done_query)  { g_copy_done_query->Release(); }
+    for (int i = 0; i < 2; i++) {
+        if (g_desktop_copy_srv[i]) { g_desktop_copy_srv[i]->Release(); }
+        if (g_desktop_copy[i])     { g_desktop_copy[i]->Release(); }
+    }
     if (g_vb) g_vb->Release();
     if (g_dupl) g_dupl->Release();
     if (g_output) g_output->Release();

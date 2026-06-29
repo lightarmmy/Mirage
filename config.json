@@ -19,7 +19,7 @@
       "name": "Warm Color Temperature",
       "shader": "shaders/warm_color.hlsl",
       "hotkey": { "keys": ["ctrl", "shift", "w"], "mode": "toggle" },
-      "params": { "temperature": 6500 }
+      "params": { "temperature": 3000 }
     }
   ]
 }
