@@ -444,8 +444,8 @@ static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
         int w = r.right - r.left;
         int h = r.bottom - r.top;
         if (w < 50 || h < 50) return TRUE;
-        // Skip title-less windows anchored at (0,0) that cover >60% screen (wallpaper layers)
-        if (r.left <= 0 && r.top <= 0 && w >= ctx->sw * 0.6f && h >= ctx->sh * 0.6f) {
+        // Skip title-less windows anchored at (0,0) covering >40% screen (wallpaper layers)
+        if (r.left <= 0 && r.top <= 0 && w >= ctx->sw * 0.4f && h >= ctx->sh * 0.4f) {
             wchar_t title[256];
             if (GetWindowTextW(hwnd, title, 256) == 0) return TRUE;
         }
