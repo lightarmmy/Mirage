@@ -193,6 +193,19 @@ bool renderer_init(HWND hwnd) {
     g_ctx->PSSetSamplers(0, 1, &sampler);
     sampler->Release(); // ref held by context
 
+    // Disable back-face culling — full-screen triangle reverses winding in screen space
+    D3D11_RASTERIZER_DESC rs_desc = {};
+    rs_desc.FillMode = D3D11_FILL_SOLID;
+    rs_desc.CullMode = D3D11_CULL_NONE;
+    ID3D11RasterizerState* rs;
+    g_device->CreateRasterizerState(&rs_desc, &rs);
+    g_ctx->RSSetState(rs);
+    rs->Release();
+
+    // Set viewport to full render target
+    D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)g_width, (float)g_height, 0.0f, 1.0f };
+    g_ctx->RSSetViewports(1, &vp);
+
     // --- Intermediate textures for multi-effect compositing ---
     {
         int w = g_width, h = g_height;
@@ -229,6 +242,9 @@ void renderer_resize(int w, int h) {
         release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
         return;
     }
+
+    D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f };
+    g_ctx->RSSetViewports(1, &vp);
 }
 
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
