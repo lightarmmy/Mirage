@@ -19,15 +19,12 @@ static std::vector<EffectConfig> g_effects;
 static bool                      g_running = true;
 static bool                      g_overlay_visible = false;
 
-// Timer for effect elapsed time
-static LARGE_INTEGER g_freq;
-static std::vector<float> g_effect_start_times;
-
 static std::string get_exe_dir() {
     wchar_t path[MAX_PATH];
     GetModuleFileNameW(nullptr, path, MAX_PATH);
-    std::wstring ws(path);
-    std::string s(ws.begin(), ws.end());
+    int len = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
+    std::string s(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, path, -1, &s[0], len, nullptr, nullptr);
     size_t pos = s.find_last_of("\\/");
     return s.substr(0, pos + 1);
 }
@@ -106,8 +103,6 @@ static void update_and_render() {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
-    QueryPerformanceFrequency(&g_freq);
-
     // Load config
     g_config = load_config(get_exe_dir() + "config.json");
 
