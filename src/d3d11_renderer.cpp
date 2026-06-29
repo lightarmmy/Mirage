@@ -2,8 +2,6 @@
 #include <dxgi1_2.h>
 #include <cstdio>
 
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3d11.lib")
 
 // Full-screen triangle vertices (NDC coords + UV)
 struct Vertex {
@@ -23,6 +21,9 @@ static ID3D11DeviceContext*    g_ctx      = nullptr;
 static IDXGISwapChain*         g_swapchain = nullptr;
 static IDXGIOutputDuplication* g_dupl     = nullptr;
 static ID3D11Buffer*           g_vb       = nullptr;
+
+static ID3D11RenderTargetView* g_backbuffer_rtv = nullptr;
+static IDXGIOutput*            g_output         = nullptr;
 
 static ID3D11Texture2D*          g_captured_tex  = nullptr;
 static ID3D11ShaderResourceView* g_captured_srv  = nullptr;
@@ -137,7 +138,7 @@ bool renderer_init(HWND hwnd) {
         output1->DuplicateOutput(g_device, &g_dupl);
         output1->Release();
     }
-    chosen_output->Release();
+    g_output = chosen_output;
     chosen_adapter->Release();
 
     if (!g_dupl) return false;
@@ -213,6 +214,14 @@ void renderer_resize(int w, int h) {
     if (g_swapchain) {
         g_ctx->OMSetRenderTargets(0, nullptr, nullptr);
         g_swapchain->ResizeBuffers(1, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+
+        // Recreate backbuffer RTV after resize
+        if (g_backbuffer_rtv) { g_backbuffer_rtv->Release(); g_backbuffer_rtv = nullptr; }
+        ID3D11Texture2D* bb = nullptr;
+        if (SUCCEEDED(g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb))) {
+            g_device->CreateRenderTargetView(bb, nullptr, &g_backbuffer_rtv);
+            bb->Release();
+        }
     }
 
     if (!create_intermediate_texture(w, h, &g_temp_tex[0], &g_temp_rtv[0], &g_temp_srv[0])) return;
@@ -231,9 +240,14 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     HRESULT hr = g_dupl->AcquireNextFrame(16, &frame_info, &desktop_resource);
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
-        // Recreate duplication on lost access (e.g., UAC prompt, Ctrl+Alt+Del)
         g_dupl->Release(); g_dupl = nullptr;
-        // Re-init from stored output... for v1 just ignore this frame
+        if (g_output) {
+            IDXGIOutput1* output1 = nullptr;
+            if (SUCCEEDED(g_output->QueryInterface(__uuidof(IDXGIOutput1), (void**)&output1))) {
+                output1->DuplicateOutput(g_device, &g_dupl);
+                output1->Release();
+            }
+        }
         return;
     }
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) return;
@@ -264,12 +278,8 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         return;
     }
 
-    ID3D11RenderTargetView* backbuffer_rtv = nullptr;
-    ID3D11Texture2D* backbuffer_tex = nullptr;
-    g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backbuffer_tex);
-    hr = g_device->CreateRenderTargetView(backbuffer_tex, nullptr, &backbuffer_rtv);
-    if (FAILED(hr)) { backbuffer_tex->Release(); g_dupl->ReleaseFrame(); return; }
-    backbuffer_tex->Release();
+    if (!g_backbuffer_rtv) { g_dupl->ReleaseFrame(); return; }
+    ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
 
     ID3D11ShaderResourceView* src_srv = g_captured_srv;
     int dst_idx = 0;
@@ -307,17 +317,18 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     // --- Present ---
     g_swapchain->Present(1, 0); // VSync on
 
-    backbuffer_rtv->Release();
     g_dupl->ReleaseFrame();
 }
 
 void renderer_shutdown() {
+    if (g_backbuffer_rtv) { g_backbuffer_rtv->Release(); g_backbuffer_rtv = nullptr; }
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
     if (g_captured_srv) g_captured_srv->Release();
     if (g_captured_tex) g_captured_tex->Release();
     if (g_vb) g_vb->Release();
     if (g_dupl) g_dupl->Release();
+    if (g_output) g_output->Release();
     if (g_swapchain) g_swapchain->Release();
     if (g_ctx) g_ctx->Release();
     if (g_device) g_device->Release();

@@ -78,12 +78,14 @@ static bool is_key_down(const std::string& key) {
     return g_key_state[vk];
 }
 
-void input_init() {
+bool input_init() {
     init_vk_map();
     g_keyboard_hook = SetWindowsHookExW(WH_KEYBOARD_LL, low_level_keyboard_proc,
                                          GetModuleHandleW(nullptr), 0);
+    if (!g_keyboard_hook) return false;
     QueryPerformanceFrequency(&g_freq);
     QueryPerformanceCounter(&g_last_time);
+    return true;
 }
 
 void input_shutdown() {

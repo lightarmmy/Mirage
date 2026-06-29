@@ -1,10 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <d3d11.h>
-#include <chrono>
 #include <string>
 #include <vector>
-#include <unordered_map>
 
 #include "config_manager.h"
 #include "overlay_window.h"
@@ -53,6 +51,15 @@ static void load_all_shaders() {
 }
 
 static void update_and_render() {
+    // Detect screen resolution changes and propagate to renderer
+    {
+        int sw = GetSystemMetrics(SM_CXSCREEN);
+        int sh = GetSystemMetrics(SM_CYSCREEN);
+        if (sw != renderer_width() || sh != renderer_height()) {
+            renderer_resize(sw, sh);
+        }
+    }
+
     // Update input state machine
     input_update(g_effects);
 
@@ -119,7 +126,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     }
 
     // Init input
-    input_init();
+    if (!input_init()) {
+        renderer_shutdown();
+        destroy_overlay_window(g_hwnd);
+        return -1;
+    }
 
     // Load shaders
     load_all_shaders();

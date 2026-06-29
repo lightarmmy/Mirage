@@ -6,7 +6,7 @@
 
 struct EffectConfig; // forward decl from config_manager.h
 
-void input_init();
+bool input_init();
 void input_shutdown();
 void input_update(const std::vector<EffectConfig>& effects);
 const std::vector<bool>& input_effect_active_states();
