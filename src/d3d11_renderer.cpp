@@ -167,7 +167,8 @@ bool renderer_init(HWND hwnd) {
     vb_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 
     D3D11_SUBRESOURCE_DATA vb_data = { g_quad_vertices, 0, 0 };
-    g_device->CreateBuffer(&vb_desc, &vb_data, &g_vb);
+    hr = g_device->CreateBuffer(&vb_desc, &vb_data, &g_vb);
+    if (FAILED(hr)) { OutputDebugStringA("CreateBuffer failed\n"); return false; }
 
     // --- Render state ---
     UINT stride = sizeof(Vertex);
@@ -186,12 +187,18 @@ bool renderer_init(HWND hwnd) {
     smp_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
     smp_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     ID3D11SamplerState* sampler;
-    g_device->CreateSamplerState(&smp_desc, &sampler);
+    hr = g_device->CreateSamplerState(&smp_desc, &sampler);
+    if (FAILED(hr)) return false;
     g_ctx->PSSetSamplers(0, 1, &sampler);
     sampler->Release(); // ref held by context
 
     // --- Intermediate textures for multi-effect compositing ---
-    renderer_resize(g_width, g_height);
+    {
+        int w = g_width, h = g_height;
+        g_width = 0;
+        g_height = 0;
+        renderer_resize(w, h);
+    }
 
     return true;
 }
@@ -208,8 +215,11 @@ void renderer_resize(int w, int h) {
         g_swapchain->ResizeBuffers(1, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     }
 
-    create_intermediate_texture(w, h, &g_temp_tex[0], &g_temp_rtv[0], &g_temp_srv[0]);
-    create_intermediate_texture(w, h, &g_temp_tex[1], &g_temp_rtv[1], &g_temp_srv[1]);
+    if (!create_intermediate_texture(w, h, &g_temp_tex[0], &g_temp_rtv[0], &g_temp_srv[0])) return;
+    if (!create_intermediate_texture(w, h, &g_temp_tex[1], &g_temp_rtv[1], &g_temp_srv[1])) {
+        release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
+        return;
+    }
 }
 
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
@@ -244,7 +254,8 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     srv_desc.Format = tex_desc.Format;
     srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
     srv_desc.Texture2D.MipLevels = 1;
-    g_device->CreateShaderResourceView(g_captured_tex, &srv_desc, &g_captured_srv);
+    hr = g_device->CreateShaderResourceView(g_captured_tex, &srv_desc, &g_captured_srv);
+    if (FAILED(hr)) { g_dupl->ReleaseFrame(); return; }
 
     // --- Multi-effect compositing with ping-pong ---
     int N = (int)active_shaders.size();
@@ -256,7 +267,8 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     ID3D11RenderTargetView* backbuffer_rtv = nullptr;
     ID3D11Texture2D* backbuffer_tex = nullptr;
     g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backbuffer_tex);
-    g_device->CreateRenderTargetView(backbuffer_tex, nullptr, &backbuffer_rtv);
+    hr = g_device->CreateRenderTargetView(backbuffer_tex, nullptr, &backbuffer_rtv);
+    if (FAILED(hr)) { backbuffer_tex->Release(); g_dupl->ReleaseFrame(); return; }
     backbuffer_tex->Release();
 
     ID3D11ShaderResourceView* src_srv = g_captured_srv;
