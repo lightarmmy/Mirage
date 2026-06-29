@@ -115,7 +115,7 @@ static void update_and_render() {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
-    SetProcessDPIAware(); // Use physical pixels so GetSystemMetrics matches Desktop Duplication
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     // Load config
     g_config = load_config(get_exe_dir() + "config.json");
