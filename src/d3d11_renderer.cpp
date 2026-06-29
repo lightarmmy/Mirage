@@ -147,9 +147,18 @@ bool renderer_init(HWND hwnd) {
 
     if (!g_dupl) return false;
 
-    // --- Probe DD to get actual capture resolution (may differ from GetSystemMetrics on scaled displays) ---
-    g_width  = GetSystemMetrics(SM_CXSCREEN);
-    g_height = GetSystemMetrics(SM_CYSCREEN);
+    // --- Get physical resolution (ignores DPI scaling) ---
+    {
+        DEVMODEW dm = {};
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm)) {
+            g_width  = (int)dm.dmPelsWidth;
+            g_height = (int)dm.dmPelsHeight;
+        } else {
+            g_width  = GetSystemMetrics(SM_CXSCREEN);
+            g_height = GetSystemMetrics(SM_CYSCREEN);
+        }
+    }
 
     {
         IDXGIResource* probe = nullptr;

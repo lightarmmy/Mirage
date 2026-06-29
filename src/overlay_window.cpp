@@ -19,8 +19,15 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 void get_screen_size(int& width, int& height) {
-    width  = GetSystemMetrics(SM_CXSCREEN);
-    height = GetSystemMetrics(SM_CYSCREEN);
+    DEVMODEW dm = {};
+    dm.dmSize = sizeof(dm);
+    if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm)) {
+        width  = (int)dm.dmPelsWidth;
+        height = (int)dm.dmPelsHeight;
+    } else {
+        width  = GetSystemMetrics(SM_CXSCREEN);
+        height = GetSystemMetrics(SM_CYSCREEN);
+    }
 }
 
 HWND create_overlay_window(HINSTANCE hInstance, int width, int height) {
