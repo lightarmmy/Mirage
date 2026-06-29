@@ -133,7 +133,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         return -1;
     }
 
-    // Now resize main window to match renderer's actual resolution
+    // Resize window to match renderer resolution exactly
     sw = renderer_width();
     sh = renderer_height();
     SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, sw, sh, SWP_NOACTIVATE | SWP_SHOWWINDOW);

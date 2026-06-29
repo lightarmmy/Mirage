@@ -232,8 +232,8 @@ bool renderer_init(HWND hwnd) {
     g_ctx->RSSetState(rs);
     rs->Release();
 
-    // Set viewport to full render target
-    D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)g_width, (float)g_height, 0.0f, 1.0f };
+    // Set viewport with overscan
+    D3D11_VIEWPORT vp = { -2.0f, -2.0f, (float)g_width + 4.0f, (float)g_height + 4.0f, 0.0f, 1.0f };
     g_ctx->RSSetViewports(1, &vp);
 
     // --- Intermediate textures for multi-effect compositing ---
@@ -296,7 +296,7 @@ void renderer_resize(int w, int h) {
         return;
     }
 
-    D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f };
+    D3D11_VIEWPORT vp = { -2.0f, -2.0f, (float)w + 4.0f, (float)h + 4.0f, 0.0f, 1.0f };
     g_ctx->RSSetViewports(1, &vp);
 }
 
@@ -365,8 +365,8 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
             src_srv = g_temp_srv[1 - dst_idx];
         }
 
-        // Ensure viewport + no scissor (prevents partial rendering on layered windows)
-        D3D11_VIEWPORT vp = { 0.0f, 0.0f, (float)g_width, (float)g_height, 0.0f, 1.0f };
+        // Overscan viewport by 2px to eliminate any border artifacts at screen edges
+        D3D11_VIEWPORT vp = { -2.0f, -2.0f, (float)g_width + 4.0f, (float)g_height + 4.0f, 0.0f, 1.0f };
         g_ctx->RSSetViewports(1, &vp);
         g_ctx->RSSetScissorRects(0, nullptr);
 
