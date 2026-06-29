@@ -286,7 +286,7 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         g_ctx->PSSetConstantBuffers(0, 1, &active_shaders[i]->cbuffer);
         g_ctx->Draw(3, 0);
 
-        if (N > 1 && i == 0) {
+        if (N > 1 && i < N - 1) {
             src_srv = g_temp_srv[dst_idx];
             dst_idx = 1 - dst_idx;
         }
