@@ -110,6 +110,8 @@ static void update_and_render() {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+    SetProcessDPIAware(); // Use physical pixels so GetSystemMetrics matches Desktop Duplication
+
     // Load config
     g_config = load_config(get_exe_dir() + "config.json");
 
