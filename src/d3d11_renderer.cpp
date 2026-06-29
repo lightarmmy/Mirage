@@ -29,6 +29,9 @@ static IDXGIOutput*            g_output         = nullptr;
 static ID3D11Texture2D*          g_desktop_copy     = nullptr;
 static ID3D11ShaderResourceView* g_desktop_copy_srv = nullptr;
 
+// GPU sync query for CopyResource → ReleaseFrame ordering
+static ID3D11Query* g_copy_done_query = nullptr;
+
 // Intermediate render targets for multi-effect compositing (ping-pong)
 static ID3D11Texture2D*          g_temp_tex[2]   = {nullptr, nullptr};
 static ID3D11RenderTargetView*   g_temp_rtv[2]   = {nullptr, nullptr};
@@ -194,6 +197,10 @@ bool renderer_init(HWND hwnd) {
     g_ctx->PSSetSamplers(0, 1, &sampler);
     sampler->Release(); // ref held by context
 
+    // GPU sync query for safe CopyResource → ReleaseFrame ordering
+    D3D11_QUERY_DESC qdesc = { D3D11_QUERY_EVENT, 0 };
+    g_device->CreateQuery(&qdesc, &g_copy_done_query);
+
     // Disable back-face culling — full-screen triangle reverses winding in screen space
     D3D11_RASTERIZER_DESC rs_desc = {};
     rs_desc.FillMode = D3D11_FILL_SOLID;
@@ -270,7 +277,7 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     // --- Acquire desktop frame ---
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
-    HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
+    HRESULT hr = g_dupl->AcquireNextFrame(16, &frame_info, &desktop_resource);
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
         g_dupl->Release(); g_dupl = nullptr;
@@ -285,7 +292,7 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     }
 
     if (SUCCEEDED(hr)) {
-        // Acquired a new frame — copy it into our own texture before ReleaseFrame
+        // Acquired a new frame — copy to own texture, sync GPU, then release
         ID3D11Texture2D* src_tex = nullptr;
         hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&src_tex);
         desktop_resource->Release();
@@ -293,14 +300,19 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         if (SUCCEEDED(hr) && g_desktop_copy && g_desktop_copy_srv) {
             g_ctx->CopyResource(g_desktop_copy, src_tex);
             src_tex->Release();
+
+            // GPU sync: ensure CopyResource completes before ReleaseFrame
+            g_ctx->End(g_copy_done_query);
+            while (g_ctx->GetData(g_copy_done_query, nullptr, 0, 0) == S_FALSE) {}
         } else if (SUCCEEDED(hr)) {
             src_tex->Release();
         }
 
         g_dupl->ReleaseFrame();
     }
+    // On timeout: g_desktop_copy still contains the last successfully copied frame
 
-    // If we don't have our copy yet, nothing to render
+    // If we don't have our copy yet (first frame not acquired), nothing to render
     if (!g_desktop_copy_srv) return;
 
     // --- Multi-effect compositing with ping-pong ---
@@ -348,6 +360,7 @@ void renderer_shutdown() {
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
     if (g_desktop_copy_srv) { g_desktop_copy_srv->Release(); }
     if (g_desktop_copy)     { g_desktop_copy->Release(); }
+    if (g_copy_done_query)  { g_copy_done_query->Release(); }
     if (g_vb) g_vb->Release();
     if (g_dupl) g_dupl->Release();
     if (g_output) g_output->Release();
