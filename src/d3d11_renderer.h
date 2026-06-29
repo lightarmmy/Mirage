@@ -15,3 +15,4 @@ ID3D11DeviceContext* renderer_get_context();
 int renderer_width();
 int renderer_height();
 int renderer_enumerate_windows(float* rects, int max_count); // fills (l,t,r,b) quads
+void renderer_dump_windows(); // write window info to Desktop/mirage_debug.txt

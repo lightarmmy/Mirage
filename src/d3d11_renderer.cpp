@@ -1,6 +1,8 @@
 #include "d3d11_renderer.h"
 #include <dxgi1_2.h>
 #include <cstdio>
+#include <fstream>
+#include <ShlObj.h>
 
 
 // Full-screen triangle vertices (NDC coords + UV)
@@ -466,4 +468,42 @@ int renderer_enumerate_windows(float* rects, int max_count) {
     EnumWindows(enum_windows_callback, (LPARAM)&ctx);
     return max_count - ctx.remaining;
 }
+
+static std::ofstream g_dump_file;
+
+static BOOL CALLBACK dump_windows_callback(HWND hwnd, LPARAM) {
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    if (is_desktop_or_own_window(hwnd)) return TRUE;
+
+    wchar_t cls[128], title[256];
+    GetClassNameW(hwnd, cls, 128);
+    GetWindowTextW(hwnd, title, 256);
+    RECT r;
+    GetWindowRect(hwnd, &r);
+    int w = r.right - r.left, h = r.bottom - r.top;
+    DWORD pid;
+    GetWindowThreadProcessId(hwnd, &pid);
+
+    char cls_narrow[128] = {}, title_narrow[256] = {};
+    WideCharToMultiByte(CP_UTF8, 0, cls, -1, cls_narrow, 128, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, title, -1, title_narrow, 256, nullptr, nullptr);
+
+    g_dump_file << "Class: [" << cls_narrow << "]  Title: [" << title_narrow
+                << "]  Rect: (" << r.left << "," << r.top << "," << r.right << "," << r.bottom
+                << ")  Size: " << w << "x" << h << "  PID: " << pid << "\n";
+    return TRUE;
+}
+
+void renderer_dump_windows() {
+    wchar_t desktop[MAX_PATH];
+    SHGetFolderPathW(nullptr, CSIDL_DESKTOP, nullptr, 0, desktop);
+    std::wstring path = std::wstring(desktop) + L"\\mirage_debug.txt";
+    g_dump_file.open(path, std::ios::out | std::ios::trunc);
+    if (!g_dump_file.is_open()) return;
+    g_dump_file << "=== Mirage Window Dump ===\nScreen: " << g_width << "x" << g_height << "\n\n";
+    EnumWindows(dump_windows_callback, 0);
+    g_dump_file << "\n=== End ===\n";
+    g_dump_file.close();
+}
+
 int renderer_height() { return g_height; }

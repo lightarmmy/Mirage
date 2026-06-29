@@ -17,6 +17,7 @@ static std::vector<Shader*>      g_shaders;
 static std::vector<EffectConfig> g_effects;
 static bool                      g_running = true;
 static bool                      g_overlay_visible = false;
+static bool                      g_dump_pressed = false;
 
 static std::string get_exe_dir() {
     wchar_t path[MAX_PATH];
@@ -63,6 +64,18 @@ static void update_and_render() {
 
     // Update input state machine
     input_update(g_effects);
+
+    // Ctrl+Shift+D: dump all visible windows to Desktop/mirage_debug.txt
+    if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+        (GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+        (GetAsyncKeyState('D') & 0x8000)) {
+        if (!g_dump_pressed) {
+            g_dump_pressed = true;
+            renderer_dump_windows();
+        }
+    } else {
+        g_dump_pressed = false;
+    }
 
     // Check for F5 reload
     if (input_should_reload()) {
