@@ -122,7 +122,12 @@ Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg) {
     }
 
     auto* s = new Shader();
-    device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &s->ps);
+    hr = device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &s->ps);
+    if (FAILED(hr) || !s->ps) {
+        blob->Release();
+        delete s;
+        return nullptr;
+    }
     blob->Release();
 
     // Create constant buffer
@@ -131,7 +136,12 @@ Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg) {
     cb_desc.Usage = D3D11_USAGE_DYNAMIC;
     cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cb_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    device->CreateBuffer(&cb_desc, nullptr, &s->cbuffer);
+    hr = device->CreateBuffer(&cb_desc, nullptr, &s->cbuffer);
+    if (FAILED(hr) || !s->cbuffer) {
+        s->ps->Release();
+        delete s;
+        return nullptr;
+    }
 
     // Store param values
     s->param_count = 0;
