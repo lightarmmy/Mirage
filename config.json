@@ -1,12 +1,7 @@
 {
   "version": 1,
+  "window_blacklist": [],
   "effects": [
-    {
-      "id": "test_red",
-      "name": "TEST: Solid Red",
-      "shader": "shaders/test_red.hlsl",
-      "hotkey": { "keys": ["ctrl", "shift", "r"], "mode": "toggle" }
-    },
     {
       "id": "invert",
       "name": "Color Inversion",
