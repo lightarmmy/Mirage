@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <dwmapi.h>
 #include <d3d11.h>
 #include <string>
 #include <vector>
@@ -120,17 +121,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Load config
     g_config = load_config(get_exe_dir() + "config.json");
 
-    // Create overlay window
+    // Create overlay window at screen size, then renderer_init will correct if needed
     int sw, sh;
     get_screen_size(sw, sh);
     g_hwnd = create_overlay_window(hInstance, sw, sh);
     if (!g_hwnd) return -1;
 
-    // Init renderer
+    // Init renderer (probes DD for true resolution, resizes window to match)
     if (!renderer_init(g_hwnd)) {
         destroy_overlay_window(g_hwnd);
         return -1;
     }
+
+    // Now resize main window to match renderer's actual resolution
+    sw = renderer_width();
+    sh = renderer_height();
+    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, sw, sh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    DwmFlush(); // Ensure DWM processes the resize before we hide the window
 
     // Init input
     if (!input_init()) {
