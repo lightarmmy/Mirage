@@ -24,6 +24,7 @@ static ID3D11Buffer*           g_vb       = nullptr;
 
 static ID3D11RenderTargetView* g_backbuffer_rtv = nullptr;
 static IDXGIOutput*            g_output         = nullptr;
+static HWND                    g_hwnd           = nullptr; // for hide-capture-show
 
 // Double-buffered desktop copies (keep GPU async without sync stalls)
 static ID3D11Texture2D*          g_desktop_copy[2]     = {nullptr, nullptr};
@@ -78,6 +79,7 @@ static void release_intermediate_texture(
 // ---- public API ----
 
 bool renderer_init(HWND hwnd) {
+    g_hwnd = hwnd;
     g_width  = GetSystemMetrics(SM_CXSCREEN);
     g_height = GetSystemMetrics(SM_CYSCREEN);
 
@@ -277,7 +279,13 @@ void renderer_resize(int w, int h) {
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     if (!g_dupl || !g_ctx) return;
 
-    // --- Acquire desktop frame (non-blocking poll) ---
+    // --- Step 1: Hide overlay so next capture doesn't include our effect ---
+    if (g_hwnd) {
+        SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_HIDEWINDOW);
+    }
+
+    // --- Step 2: Capture clean desktop (without our overlay) ---
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
     HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
@@ -291,11 +299,13 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
                 output1->Release();
             }
         }
+        // Show window even on error
+        if (g_hwnd) SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         return;
     }
 
     if (SUCCEEDED(hr)) {
-        // Got a new frame — copy into write buffer, then immediately release
         ID3D11Texture2D* src_tex = nullptr;
         hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&src_tex);
         desktop_resource->Release();
@@ -304,7 +314,6 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
             g_ctx->CopyResource(g_desktop_copy[g_copy_write_idx], src_tex);
             src_tex->Release();
 
-            // Swap buffers: what we just wrote becomes the new read buffer
             g_copy_read_idx = g_copy_write_idx;
             g_copy_write_idx = 1 - g_copy_write_idx;
             g_has_first_frame = true;
@@ -315,10 +324,15 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         g_dupl->ReleaseFrame();
     }
 
-    // Don't render until we have at least one captured frame
+    // --- Step 3: Show overlay again ---
+    if (g_hwnd) {
+        SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
     if (!g_has_first_frame) return;
 
-    // --- Multi-effect compositing with ping-pong ---
+    // --- Step 4: Render effects on top of clean desktop capture ---
     int N = (int)active_shaders.size();
     if (N == 0) return;
     if (!g_backbuffer_rtv) return;
