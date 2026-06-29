@@ -250,10 +250,11 @@ void renderer_resize(int w, int h) {
 void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     if (!g_dupl || !g_ctx) return;
 
-    // --- Acquire desktop frame ---
+    // --- Acquire desktop frame (or reuse cached on timeout) ---
+    bool new_frame = false;
     IDXGIResource* desktop_resource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frame_info;
-    HRESULT hr = g_dupl->AcquireNextFrame(16, &frame_info, &desktop_resource);
+    HRESULT hr = g_dupl->AcquireNextFrame(0, &frame_info, &desktop_resource);
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
         g_dupl->Release(); g_dupl = nullptr;
@@ -266,37 +267,47 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         }
         return;
     }
-    if (hr == DXGI_ERROR_WAIT_TIMEOUT) return;
-    if (FAILED(hr)) return;
 
-    // Get the desktop texture
-    if (g_captured_tex) { g_captured_tex->Release(); g_captured_tex = nullptr; }
-    if (g_captured_srv) { g_captured_srv->Release(); g_captured_srv = nullptr; }
+    if (SUCCEEDED(hr)) {
+        new_frame = true;
 
-    hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&g_captured_tex);
-    desktop_resource->Release();
-    if (FAILED(hr)) { g_dupl->ReleaseFrame(); return; }
+        // Release previous captured texture
+        if (g_captured_tex) { g_captured_tex->Release(); g_captured_tex = nullptr; }
+        if (g_captured_srv) { g_captured_srv->Release(); g_captured_srv = nullptr; }
 
-    D3D11_TEXTURE2D_DESC tex_desc;
-    g_captured_tex->GetDesc(&tex_desc);
+        hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&g_captured_tex);
+        desktop_resource->Release();
+        if (SUCCEEDED(hr)) {
+            D3D11_TEXTURE2D_DESC tex_desc;
+            g_captured_tex->GetDesc(&tex_desc);
 
-    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-    srv_desc.Format = tex_desc.Format;
-    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srv_desc.Texture2D.MipLevels = 1;
-    hr = g_device->CreateShaderResourceView(g_captured_tex, &srv_desc, &g_captured_srv);
-    if (FAILED(hr)) { g_dupl->ReleaseFrame(); return; }
+            D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+            srv_desc.Format = tex_desc.Format;
+            srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srv_desc.Texture2D.MipLevels = 1;
+            g_device->CreateShaderResourceView(g_captured_tex, &srv_desc, &g_captured_srv);
+        }
+    }
+
+    // If no cached frame available yet, nothing to render
+    if (!g_captured_srv) {
+        if (new_frame) g_dupl->ReleaseFrame();
+        return;
+    }
 
     // --- Multi-effect compositing with ping-pong ---
     int N = (int)active_shaders.size();
     if (N == 0) {
-        g_dupl->ReleaseFrame();
+        if (new_frame) g_dupl->ReleaseFrame();
         return;
     }
 
-    if (!g_backbuffer_rtv) { g_dupl->ReleaseFrame(); return; }
-    ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
+    if (!g_backbuffer_rtv) {
+        if (new_frame) g_dupl->ReleaseFrame();
+        return;
+    }
 
+    ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
     ID3D11ShaderResourceView* src_srv = g_captured_srv;
     int dst_idx = 0;
 
@@ -304,17 +315,13 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         bool is_last = (i == N - 1);
 
         if (N == 1) {
-            // Single effect: render directly to backbuffer
             g_ctx->OMSetRenderTargets(1, &backbuffer_rtv, nullptr);
         } else if (is_last) {
-            // Last of multiple: render to backbuffer
             g_ctx->OMSetRenderTargets(1, &backbuffer_rtv, nullptr);
-            src_srv = g_temp_srv[1 - dst_idx]; // previous pass output
+            src_srv = g_temp_srv[1 - dst_idx];
         } else if (i == 0) {
-            // First pass: capture -> temp[dst_idx]
             g_ctx->OMSetRenderTargets(1, &g_temp_rtv[dst_idx], nullptr);
         } else {
-            // Middle pass: temp[prev] -> temp[dst_idx]
             g_ctx->OMSetRenderTargets(1, &g_temp_rtv[dst_idx], nullptr);
             src_srv = g_temp_srv[1 - dst_idx];
         }
@@ -330,10 +337,8 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         }
     }
 
-    // --- Present ---
-    g_swapchain->Present(1, 0); // VSync on
-
-    g_dupl->ReleaseFrame();
+    g_swapchain->Present(1, 0);
+    if (new_frame) g_dupl->ReleaseFrame();
 }
 
 void renderer_shutdown() {
