@@ -378,18 +378,30 @@ ID3D11Device*        renderer_get_device()    { return g_device; }
 ID3D11DeviceContext* renderer_get_context()   { return g_ctx; }
 int renderer_width()  { return g_width; }
 
-struct EnumCtx { float* rects; int remaining; };
+struct EnumCtx { float* rects; int remaining; int sw; int sh; };
+
+static bool is_desktop_window(HWND hwnd) {
+    wchar_t cls[64];
+    if (!GetClassNameW(hwnd, cls, 64)) return false;
+    return (_wcsicmp(cls, L"Progman") == 0 ||
+            _wcsicmp(cls, L"WorkerW") == 0 ||
+            _wcsicmp(cls, L"Shell_TrayWnd") == 0);
+}
 
 static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
     auto* ctx = (EnumCtx*)lParam;
     if (ctx->remaining <= 0) return FALSE;
     if (!IsWindowVisible(hwnd)) return TRUE;
+    if (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) return TRUE;
+    if (is_desktop_window(hwnd)) return TRUE;
 
     RECT r;
     if (GetWindowRect(hwnd, &r)) {
         int w = r.right - r.left;
         int h = r.bottom - r.top;
-        if (w <= 0 || h <= 0) return TRUE;
+        if (w < 50 || h < 50) return TRUE;
+        // Skip full-screen windows (likely the desktop background)
+        if (w >= ctx->sw && h >= ctx->sh) return TRUE;
 
         float* dst = ctx->rects;
         dst[0] = (float)r.left;
@@ -403,7 +415,7 @@ static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
 }
 
 int renderer_enumerate_windows(float* rects, int max_count) {
-    EnumCtx ctx = { rects, max_count };
+    EnumCtx ctx = { rects, max_count, g_width, g_height };
     EnumWindows(enum_windows_callback, (LPARAM)&ctx);
     return max_count - ctx.remaining;
 }
