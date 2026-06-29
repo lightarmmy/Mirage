@@ -150,17 +150,19 @@ bool renderer_init(HWND hwnd) {
 
     if (!g_dupl) return false;
 
-    // --- SwapChain ---
+    // --- SwapChain (flip model for proper VSync at any refresh rate) ---
     DXGI_SWAP_CHAIN_DESC sc_desc = {};
-    sc_desc.BufferCount = 1;
+    sc_desc.BufferCount = 2;
     sc_desc.BufferDesc.Width  = g_width;
     sc_desc.BufferDesc.Height = g_height;
     sc_desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    sc_desc.BufferDesc.RefreshRate.Numerator = 0;
+    sc_desc.BufferDesc.RefreshRate.Denominator = 0;
     sc_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sc_desc.OutputWindow = hwnd;
     sc_desc.SampleDesc.Count = 1;
     sc_desc.Windowed = TRUE;
-    sc_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    sc_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     IDXGIFactory1* swapchain_factory = nullptr;
     CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&swapchain_factory);
@@ -256,7 +258,7 @@ void renderer_resize(int w, int h) {
 
     if (g_swapchain) {
         g_ctx->OMSetRenderTargets(0, nullptr, nullptr);
-        g_swapchain->ResizeBuffers(1, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+        g_swapchain->ResizeBuffers(2, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
 
         // Recreate backbuffer RTV after resize
         if (g_backbuffer_rtv) { g_backbuffer_rtv->Release(); g_backbuffer_rtv = nullptr; }

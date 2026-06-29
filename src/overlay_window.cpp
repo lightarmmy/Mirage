@@ -38,7 +38,7 @@ HWND create_overlay_window(HINSTANCE hInstance, int width, int height) {
         registered = true;
     }
 
-    DWORD ex_style = WS_EX_TRANSPARENT | WS_EX_TOPMOST
+    DWORD ex_style = WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST
                    | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
     DWORD style = WS_POPUP;
 
