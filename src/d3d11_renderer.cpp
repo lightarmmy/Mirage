@@ -10,9 +10,9 @@ struct Vertex {
 };
 
 static const Vertex g_quad_vertices[] = {
-    { -1.0f, -1.0f, 0.0f, 0.0f },
-    {  3.0f, -1.0f, 2.0f, 0.0f },
-    { -1.0f,  3.0f, 0.0f, 2.0f },
+    { -1.0f, -1.0f, 0.0f, 1.0f },  // bottom-left NDC  → UV bottom-left
+    {  3.0f, -1.0f, 2.0f, 1.0f },  // bottom-right NDC → UV bottom-right
+    { -1.0f,  3.0f, 0.0f, -1.0f }, // top-left NDC     → UV top-left
 };
 
 // D3D11 globals
