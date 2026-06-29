@@ -377,4 +377,34 @@ void renderer_shutdown() {
 ID3D11Device*        renderer_get_device()    { return g_device; }
 ID3D11DeviceContext* renderer_get_context()   { return g_ctx; }
 int renderer_width()  { return g_width; }
+
+struct EnumCtx { float* rects; int remaining; };
+
+static BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
+    auto* ctx = (EnumCtx*)lParam;
+    if (ctx->remaining <= 0) return FALSE;
+    if (!IsWindowVisible(hwnd)) return TRUE;
+
+    RECT r;
+    if (GetWindowRect(hwnd, &r)) {
+        int w = r.right - r.left;
+        int h = r.bottom - r.top;
+        if (w <= 0 || h <= 0) return TRUE;
+
+        float* dst = ctx->rects;
+        dst[0] = (float)r.left;
+        dst[1] = (float)r.top;
+        dst[2] = (float)r.right;
+        dst[3] = (float)r.bottom;
+        ctx->rects += 4;
+        ctx->remaining--;
+    }
+    return TRUE;
+}
+
+int renderer_enumerate_windows(float* rects, int max_count) {
+    EnumCtx ctx = { rects, max_count };
+    EnumWindows(enum_windows_callback, (LPARAM)&ctx);
+    return max_count - ctx.remaining;
+}
 int renderer_height() { return g_height; }

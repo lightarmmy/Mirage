@@ -6,16 +6,19 @@
 
 #pragma pack(push, 16)
 struct MirageUniforms {
-    float resolution[2];
-    float mouse[2];
-    float time;
-    float time_delta;
-    float _pad[2];
-    float active_window[4];
-    float params[4];
+    float resolution[2];              // offset 0
+    float mouse[2];                   // offset 8
+    float time;                       // offset 16
+    float time_delta;                 // offset 20
+    float _pad[2];                    // offset 24 → align to 32
+    float active_window[4];           // offset 32
+    float params[4];                  // offset 48
+    unsigned int window_count;        // offset 64
+    float _pad2[3];                   // offset 68 → align to 80
+    float window_rects[64][4];        // offset 80  (64 windows × float4)
 };
 #pragma pack(pop)
-static_assert(sizeof(MirageUniforms) == 64, "CBuffer size mismatch");
+static_assert(sizeof(MirageUniforms) == 1104, "CBuffer size mismatch");
 
 // Built-in vertex shader (full-screen pass-through triangle)
 static const char* g_vs_source = R"(
@@ -38,6 +41,8 @@ cbuffer MirageUniforms : register(b0) {
     float  u_time_delta;
     float4 u_active_window;
     float4 u_params;
+    uint   u_window_count;
+    float4 u_window_rects[64];
 };
 Texture2D    u_scene   : register(t0);
 SamplerState u_sampler : register(s0);
@@ -161,7 +166,8 @@ void shader_unload(Shader* s) {
 }
 
 void shader_update_cbuffer(ID3D11DeviceContext* ctx, Shader* s,
-                            float mx, float my, float time, float dt, int w, int h) {
+                            float mx, float my, float time, float dt, int w, int h,
+                            int win_count, const float* win_rects) {
     MirageUniforms u = {};
     u.resolution[0] = (float)w;
     u.resolution[1] = (float)h;
@@ -185,6 +191,13 @@ void shader_update_cbuffer(ID3D11DeviceContext* ctx, Shader* s,
 
     for (int i = 0; i < s->param_count; i++) {
         u.params[i] = s->param_values[i];
+    }
+
+    // Window enumeration data
+    u.window_count = (unsigned int)win_count;
+    if (win_count > 64) win_count = 64;
+    if (win_rects && win_count > 0) {
+        memcpy(u.window_rects, win_rects, win_count * 4 * sizeof(float));
     }
 
     D3D11_MAPPED_SUBRESOURCE mapped;

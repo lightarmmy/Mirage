@@ -20,6 +20,20 @@
       "shader": "shaders/warm_color.hlsl",
       "hotkey": { "keys": ["ctrl", "shift", "w"], "mode": "toggle" },
       "params": { "temperature": 3000 }
+    },
+    {
+      "id": "edge_glow",
+      "name": "Window Edge Glow",
+      "shader": "shaders/edge_glow.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "e"], "mode": "toggle" },
+      "params": { "width": 8.0, "intensity": 0.6 }
+    },
+    {
+      "id": "window_jiggle",
+      "name": "Window Jiggle",
+      "shader": "shaders/window_jiggle.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "j"], "mode": "toggle" },
+      "params": { "amount": 3.0, "speed": 5.0 }
     }
   ]
 }

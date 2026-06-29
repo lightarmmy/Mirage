@@ -15,4 +15,5 @@ ID3D11InputLayout*  shader_get_input_layout(ID3D11Device* device);
 Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg);
 void    shader_unload(Shader* s);
 void    shader_update_cbuffer(ID3D11DeviceContext* ctx, Shader* s,
-                              float mx, float my, float time, float dt, int w, int h);
+                              float mx, float my, float time, float dt, int w, int h,
+                              int win_count, const float* win_rects);

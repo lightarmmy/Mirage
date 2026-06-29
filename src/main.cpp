@@ -95,6 +95,10 @@ static void update_and_render() {
     float my = input_mouse_y();
     float dt = input_time_delta();
 
+    // Enumerate visible windows for shader interaction
+    static float g_win_rects[64 * 4];
+    int win_count = renderer_enumerate_windows(g_win_rects, 64);
+
     static float total_time = 0.0f;
     total_time += dt;
 
@@ -102,7 +106,8 @@ static void update_and_render() {
     for (size_t i = 0; i < active_shaders.size(); i++) {
         shader_update_cbuffer(ctx, active_shaders[i],
             mx, my, total_time, dt,
-            renderer_width(), renderer_height());
+            renderer_width(), renderer_height(),
+            win_count, g_win_rects);
     }
 
     // Render
