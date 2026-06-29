@@ -263,28 +263,10 @@ void renderer_resize(int w, int h) {
     release_intermediate_texture(g_temp_tex[0], g_temp_rtv[0], g_temp_srv[0]);
     release_intermediate_texture(g_temp_tex[1], g_temp_rtv[1], g_temp_srv[1]);
 
-    // Recreate our double-buffered desktop copy textures
-    for (int i = 0; i < 2; i++) {
-        if (g_desktop_copy_srv[i]) { g_desktop_copy_srv[i]->Release(); g_desktop_copy_srv[i] = nullptr; }
-        if (g_desktop_copy[i])     { g_desktop_copy[i]->Release(); g_desktop_copy[i] = nullptr; }
-    }
+    // Desktop copy textures are created lazily on first DD frame to match its format
     g_has_first_frame = false;
     g_copy_write_idx = 0;
     g_copy_read_idx = 1;
-
-    for (int i = 0; i < 2; i++) {
-        D3D11_TEXTURE2D_DESC copy_desc = {};
-        copy_desc.Width  = w;
-        copy_desc.Height = h;
-        copy_desc.MipLevels = 1;
-        copy_desc.ArraySize = 1;
-        copy_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        copy_desc.SampleDesc.Count = 1;
-        copy_desc.Usage = D3D11_USAGE_DEFAULT;
-        copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        g_device->CreateTexture2D(&copy_desc, nullptr, &g_desktop_copy[i]);
-        g_device->CreateShaderResourceView(g_desktop_copy[i], nullptr, &g_desktop_copy_srv[i]);
-    }
 
     if (g_swapchain) {
         g_ctx->OMSetRenderTargets(0, nullptr, nullptr);
@@ -334,15 +316,42 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         hr = desktop_resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&src_tex);
         desktop_resource->Release();
 
-        if (SUCCEEDED(hr) && g_desktop_copy[g_copy_write_idx]) {
+        if (SUCCEEDED(hr)) {
+            // Lazily create/recreate copy textures to match DD frame format exactly
+            D3D11_TEXTURE2D_DESC src_desc;
+            src_tex->GetDesc(&src_desc);
+
+            auto ensure_copy = [&](int idx) {
+                bool need_recreate = !g_desktop_copy[idx];
+                if (g_desktop_copy[idx]) {
+                    D3D11_TEXTURE2D_DESC cur_desc;
+                    g_desktop_copy[idx]->GetDesc(&cur_desc);
+                    if (cur_desc.Width != src_desc.Width || cur_desc.Height != src_desc.Height ||
+                        cur_desc.Format != src_desc.Format)
+                        need_recreate = true;
+                }
+                if (need_recreate) {
+                    if (g_desktop_copy_srv[idx]) { g_desktop_copy_srv[idx]->Release(); g_desktop_copy_srv[idx] = nullptr; }
+                    if (g_desktop_copy[idx])     { g_desktop_copy[idx]->Release(); g_desktop_copy[idx] = nullptr; }
+                    D3D11_TEXTURE2D_DESC d = src_desc;
+                    d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                    d.Usage = D3D11_USAGE_DEFAULT;
+                    d.CPUAccessFlags = 0;
+                    d.MiscFlags = 0;
+                    g_device->CreateTexture2D(&d, nullptr, &g_desktop_copy[idx]);
+                    g_device->CreateShaderResourceView(g_desktop_copy[idx], nullptr, &g_desktop_copy_srv[idx]);
+                }
+            };
+
+            ensure_copy(0);
+            ensure_copy(1);
+
             g_ctx->CopyResource(g_desktop_copy[g_copy_write_idx], src_tex);
             src_tex->Release();
 
             g_copy_read_idx = g_copy_write_idx;
             g_copy_write_idx = 1 - g_copy_write_idx;
             g_has_first_frame = true;
-        } else if (SUCCEEDED(hr)) {
-            src_tex->Release();
         }
 
         g_dupl->ReleaseFrame();
