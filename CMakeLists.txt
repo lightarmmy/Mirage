@@ -36,3 +36,13 @@ target_link_libraries(mirage
 set_target_properties(mirage PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
+
+# Post-build: copy shaders and config to build directory
+add_custom_command(TARGET mirage POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/shaders"
+        "$<TARGET_FILE_DIR:mirage>/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/config.json"
+        "$<TARGET_FILE_DIR:mirage>/config.json"
+)

@@ -35,6 +35,29 @@
       "shader": "shaders/window_jiggle.hlsl",
       "hotkey": { "keys": ["ctrl", "shift", "j"], "mode": "toggle" },
       "params": { "amount": 6.0, "speed": 4.0 }
+    },
+    {
+      "id": "blackhole",
+      "name": "Black Hole",
+      "shader": "shaders/blackhole.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "b"], "mode": "toggle" },
+      "params": {
+        "hole_radius": 0.03,
+        "disk_gain": 2.2,
+        "disk_temp": 5500.0,
+        "exposure": 1.4,
+        "disk_speed": 5.0,
+        "star_gain": 0.3,
+        "disk_incl": 1.5,
+        "disk_inner": 0.0,
+        "disk_outer": 0.0,
+        "disk_opacity": 0.0,
+        "doppler_mix": 0.6,
+        "disk_beam": 0.0,
+        "disk_contrast": 0.0,
+        "disk_wind": 0.0,
+        "disk_roll": 0.0
+      }
     }
   ]
 }

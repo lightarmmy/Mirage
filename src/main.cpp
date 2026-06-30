@@ -16,8 +16,11 @@ static HWND                      g_hwnd = nullptr;
 static std::vector<Shader*>      g_shaders;
 static std::vector<EffectConfig> g_effects;
 static bool                      g_running = true;
-static bool                      g_overlay_visible = false;
+static bool                      g_alpha_warmup = false; // 1-frame delay before alpha=255
+static bool                      g_had_effects = false;   // previous frame effect state
+static bool                      g_has_active_effects = false;
 static bool                      g_dump_pressed = false;
+static int                       g_shader_failures = 0;
 
 static std::string get_exe_dir() {
     wchar_t path[MAX_PATH];
@@ -30,9 +33,9 @@ static std::string get_exe_dir() {
 }
 
 static void load_all_shaders() {
-    // Unload old
     for (auto* s : g_shaders) shader_unload(s);
     g_shaders.clear();
+    g_shader_failures = 0;
 
     ID3D11Device* device = renderer_get_device();
     for (const auto& cfg : g_config.effects) {
@@ -44,8 +47,8 @@ static void load_all_shaders() {
         if (s) {
             g_shaders.push_back(s);
         } else {
-            // Mark as failed — push null so indices stay aligned
             g_shaders.push_back(nullptr);
+            g_shader_failures++;
         }
     }
 
@@ -93,39 +96,51 @@ static void update_and_render() {
         }
     }
 
-    // Manage overlay window visibility
-    if (!active_shaders.empty() && !g_overlay_visible) {
-        ShowWindow(g_hwnd, SW_SHOW);
-        g_overlay_visible = true;
-    } else if (active_shaders.empty() && g_overlay_visible) {
-        ShowWindow(g_hwnd, SW_HIDE);
-        g_overlay_visible = false;
+    g_has_active_effects = !active_shaders.empty();
+
+    // Alpha-toggle visibility (window always visible, transparent when idle)
+    {
+        bool has_effects = g_has_active_effects;
+
+        if (has_effects && !g_had_effects) {
+            g_alpha_warmup = true;
+            renderer_invalidate_frame();
+        }
+        if (!has_effects) {
+            g_alpha_warmup = false;
+        }
+
+        BYTE alpha = (has_effects && !g_alpha_warmup) ? 255 : 0;
+        SetLayeredWindowAttributes(g_hwnd, 0, alpha, LWA_ALPHA);
+
+        g_had_effects = has_effects;
     }
 
-    if (!g_overlay_visible) return;
+    // Always update uniforms and render (alpha=0 hides stale content when idle)
+    {
+        float mx = input_mouse_x();
+        float my = input_mouse_y();
+        float dt = input_time_delta();
 
-    // Update shader uniforms
-    float mx = input_mouse_x();
-    float my = input_mouse_y();
-    float dt = input_time_delta();
+        static float g_win_rects[64 * 4];
+        int win_count = renderer_enumerate_windows(g_win_rects, 64);
 
-    // Enumerate visible windows for shader interaction
-    static float g_win_rects[64 * 4];
-    int win_count = renderer_enumerate_windows(g_win_rects, 64);
+        static float total_time = 0.0f;
+        total_time += dt;
 
-    static float total_time = 0.0f;
-    total_time += dt;
+        ID3D11DeviceContext* ctx = renderer_get_context();
+        for (size_t i = 0; i < active_shaders.size(); i++) {
+            shader_update_cbuffer(ctx, active_shaders[i],
+                mx, my, total_time, dt,
+                renderer_width(), renderer_height(),
+                win_count, g_win_rects);
+        }
 
-    ID3D11DeviceContext* ctx = renderer_get_context();
-    for (size_t i = 0; i < active_shaders.size(); i++) {
-        shader_update_cbuffer(ctx, active_shaders[i],
-            mx, my, total_time, dt,
-            renderer_width(), renderer_height(),
-            win_count, g_win_rects);
+        bool presented = renderer_render_frame(active_shaders);
+        if (g_alpha_warmup && presented) {
+            g_alpha_warmup = false; // front buffer is now fresh, safe to show
+        }
     }
-
-    // Render
-    renderer_render_frame(active_shaders);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
@@ -164,8 +179,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Load shaders
     load_all_shaders();
 
-    // Initially hidden — shown when first effect activates
-    ShowWindow(g_hwnd, SW_HIDE);
+    if (g_shader_failures > 0) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "%d shader(s) failed to compile.\n\nCheck Desktop\\mirage_shader_errors.txt for details.", g_shader_failures);
+        MessageBoxA(nullptr, msg, "Mirage — Shader Errors", MB_ICONWARNING | MB_OK);
+    }
+
+    // Window stays visible — alpha=0 (transparent) until first effect activates
 
     // Message loop
     MSG msg = {};
@@ -181,9 +201,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
         update_and_render();
 
-        // Throttle when idle
-        if (!g_overlay_visible) {
-            Sleep(16); // ~60fps polling for hotkey detection
+        // Throttle when idle — no effects to render
+        if (!g_has_active_effects) {
+            Sleep(16);
         }
     }
 

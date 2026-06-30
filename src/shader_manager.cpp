@@ -3,6 +3,17 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
+#include <ShlObj.h>
+
+static void log_shader_error(const char* path, const char* msg) {
+    wchar_t desktop[MAX_PATH];
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_DESKTOP, nullptr, 0, desktop))) return;
+    std::wstring log_path = std::wstring(desktop) + L"\\mirage_shader_errors.txt";
+    std::ofstream log(log_path, std::ios::app);
+    if (log.is_open()) {
+        log << "[" << (path ? path : "unknown") << "]\n" << msg << "\n\n";
+    }
+}
 
 #pragma pack(push, 16)
 struct MirageUniforms {
@@ -12,13 +23,13 @@ struct MirageUniforms {
     float time_delta;                 // offset 20
     float _pad[2];                    // offset 24 → align to 32
     float active_window[4];           // offset 32
-    float params[4];                  // offset 48
-    unsigned int window_count;        // offset 64
-    float _pad2[3];                   // offset 68 → align to 80
-    float window_rects[64][4];        // offset 80  (64 windows × float4)
+    float params[16];                 // offset 48 (16 floats = 64 bytes)
+    unsigned int window_count;        // offset 112
+    float _pad2[3];                   // offset 116 → align to 128
+    float window_rects[64][4];        // offset 128 (64 windows × float4)
 };
 #pragma pack(pop)
-static_assert(sizeof(MirageUniforms) == 1104, "CBuffer size mismatch");
+static_assert(sizeof(MirageUniforms) == 1152, "CBuffer size mismatch");
 
 // Built-in vertex shader (full-screen pass-through triangle)
 static const char* g_vs_source = R"(
@@ -40,7 +51,7 @@ cbuffer MirageUniforms : register(b0) {
     float  u_time;
     float  u_time_delta;
     float4 u_active_window;
-    float4 u_params;
+    float4 u_params[4];
     uint   u_window_count;
     float4 u_window_rects[64];
 };
@@ -91,11 +102,12 @@ ID3D11InputLayout* shader_get_input_layout(ID3D11Device* device) {
 static std::string generate_param_defines(const EffectConfig& cfg) {
     std::string defs;
     int idx = 0;
-    const char* swizzle[] = { "x", "y", "z", "w" };
+    const char* comp[] = { "x", "y", "z", "w" };
     for (const auto& [name, value] : cfg.params) {
-        if (idx >= 4) break;
+        if (idx >= 16) break;
         char buf[256];
-        snprintf(buf, sizeof(buf), "#define u_param_%s u_params.%s\n", name.c_str(), swizzle[idx]);
+        snprintf(buf, sizeof(buf), "#define u_param_%s u_params[%d].%s\n",
+                 name.c_str(), idx / 4, comp[idx % 4]);
         defs += buf;
         idx++;
     }
@@ -105,7 +117,11 @@ static std::string generate_param_defines(const EffectConfig& cfg) {
 Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg) {
     // Read pixel shader source from file
     std::ifstream f(cfg.shader_path);
-    if (!f.is_open()) return nullptr;
+    if (!f.is_open()) {
+        std::string msg = "Failed to open shader file: " + cfg.shader_path;
+        log_shader_error(cfg.shader_path.c_str(), msg.c_str());
+        return nullptr;
+    }
     std::stringstream ss;
     ss << f.rdbuf();
     std::string ps_source = ss.str();
@@ -120,8 +136,12 @@ Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg) {
                              nullptr, nullptr, "main", "ps_5_0", 0, 0, &blob, &err);
     if (FAILED(hr)) {
         if (err) {
-            OutputDebugStringA((const char*)err->GetBufferPointer());
+            const char* msg = (const char*)err->GetBufferPointer();
+            OutputDebugStringA(msg);
+            log_shader_error(cfg.shader_path.c_str(), msg);
             err->Release();
+        } else {
+            log_shader_error(cfg.shader_path.c_str(), "D3DCompile failed (no error blob)");
         }
         return nullptr;
     }
@@ -151,7 +171,7 @@ Shader* shader_load(ID3D11Device* device, const EffectConfig& cfg) {
     // Store param values
     s->param_count = 0;
     for (const auto& [name, value] : cfg.params) {
-        if (s->param_count >= 4) break;
+        if (s->param_count >= 16) break;
         s->param_values[s->param_count++] = value;
     }
 

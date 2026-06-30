@@ -1,5 +1,8 @@
 build/
+release/
 *.exe
 *.pdb
 *.ilk
 *.obj
+*.manifest
+.superpowers/

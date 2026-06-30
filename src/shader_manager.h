@@ -7,7 +7,7 @@ struct Shader {
     ID3D11PixelShader* ps = nullptr;
     ID3D11Buffer* cbuffer = nullptr;
     int param_count = 0;
-    float param_values[4] = {0, 0, 0, 0};
+    float param_values[16] = {0};
 };
 
 ID3D11VertexShader* shader_get_builtin_vs(ID3D11Device* device);

@@ -293,8 +293,8 @@ void renderer_resize(int w, int h) {
     g_ctx->RSSetViewports(1, &vp);
 }
 
-void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
-    if (!g_dupl || !g_ctx) return;
+bool renderer_render_frame(const std::vector<Shader*>& active_shaders) {
+    if (!g_dupl || !g_ctx) return false;
 
     // --- Acquire desktop frame (non-blocking) ---
     IDXGIResource* desktop_resource = nullptr;
@@ -310,7 +310,7 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
                 output1->Release();
             }
         }
-        return;
+        return false;
     }
 
     if (SUCCEEDED(hr)) {
@@ -359,12 +359,12 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
         g_dupl->ReleaseFrame();
     }
 
-    if (!g_has_first_frame) return;
+    if (!g_has_first_frame) return false;
 
     // --- Render effects ---
     int N = (int)active_shaders.size();
-    if (N == 0) return;
-    if (!g_backbuffer_rtv) return;
+    if (N == 0) return false;
+    if (!g_backbuffer_rtv) return false;
 
     ID3D11RenderTargetView* backbuffer_rtv = g_backbuffer_rtv;
     ID3D11ShaderResourceView* src_srv = g_desktop_copy_srv[g_copy_read_idx];
@@ -401,6 +401,7 @@ void renderer_render_frame(const std::vector<Shader*>& active_shaders) {
     }
 
     g_swapchain->Present(1, 0);
+    return true;
 }
 
 void renderer_shutdown() {
@@ -509,6 +510,10 @@ void renderer_dump_windows() {
     EnumWindows(dump_windows_callback, 0);
     g_dump_file << "\n=== End ===\n";
     g_dump_file.close();
+}
+
+void renderer_invalidate_frame() {
+    g_has_first_frame = false;
 }
 
 int renderer_height() { return g_height; }

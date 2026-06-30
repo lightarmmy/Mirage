@@ -55,7 +55,7 @@ HWND create_overlay_window(HINSTANCE hInstance, int width, int height) {
         nullptr, nullptr, hInstance, nullptr
     );
 
-    SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+    SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA); // transparent until effects activate
 
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
