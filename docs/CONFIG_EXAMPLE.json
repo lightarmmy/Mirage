@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "screensaver": {
+    "enabled": true,
+    "idle_seconds": 30,
+    "effect": "blackhole_enhanced"
+  },
+  "effects": [
+    {
+      "id": "invert",
+      "name": "Color Inversion",
+      "shader": "shaders/invert.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "i"], "mode": "toggle" },
+      "enabled": true
+    },
+    {
+      "id": "kaleidoscope",
+      "name": "Kaleidoscope",
+      "shader": "shaders/kaleidoscope.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "m"], "mode": "hold" },
+      "params": { "mirrors": 3.0, "sectors": 12.0, "speed": 0.3 },
+      "enabled": true
+    },
+    {
+      "id": "window_boil",
+      "name": "Window Boil",
+      "shader": "shaders/window_boil.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "w"], "mode": "toggle" },
+      "params": { "intensity": 1.0, "speed": 1.0 },
+      "enabled": true
+    },
+    {
+      "id": "edge_neon",
+      "name": "Edge Neon",
+      "shader": "shaders/edge_neon.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "e"], "mode": "toggle" },
+      "params": { "neon_width": 8.0, "speed": 2.0, "spark": 1.0 },
+      "enabled": true
+    },
+    {
+      "id": "glitch_shift",
+      "name": "Glitch Shift",
+      "shader": "shaders/glitch_shift.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "j"], "mode": "toggle" },
+      "params": { "shift_amount": 1.0, "glitch_speed": 1.0 },
+      "enabled": true
+    },
+    {
+      "id": "ink_spread",
+      "name": "Ink Spread",
+      "shader": "shaders/ink_spread.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "k"], "mode": "toggle" },
+      "params": { "ink_speed": 1.0, "contrast": 1.0, "blob_count": 8.0 },
+      "enabled": true
+    },
+    {
+      "id": "blackhole",
+      "name": "Black Hole",
+      "shader": "shaders/blackhole.hlsl",
+      "hotkey": { "keys": ["ctrl", "shift", "b"], "mode": "toggle" },
+      "params": {
+        "center_drift": 0.0,
+        "hole_radius": 0.06,
+        "disk_gain": 2.2,
+        "disk_temp": 5500.0,
+        "exposure": 1.4,
+        "fade": 1.0,
+        "disk_speed": 5.0,
+        "star_gain": 0.3,
+        "disk_incl": 1.5,
+        "disk_inner": 0.0,
+        "disk_outer": 0.0,
+        "disk_opacity": 0.0,
+        "doppler_mix": 0.6,
+        "disk_beam": 0.0,
+        "disk_contrast": 0.0,
+        "disk_wind": 0.0,
+        "disk_roll": 0.0
+      },
+      "enabled": true
+    },
+    {
+      "id": "blackhole_enhanced",
+      "name": "Black Hole (Enhanced)",
+      "shader": "shaders/blackhole_enhanced.hlsl",
+      "hotkey": { "keys": ["ctrl", "alt", "b"], "mode": "toggle" },
+      "params": {
+        "chaos_scale": 0.15,
+        "orbit_jitter": 0.12,
+        "hole_radius": 0.06,
+        "disk_gain": 2.2,
+        "disk_temp": 5500.0,
+        "exposure": 1.4,
+        "fade": 1.0,
+        "disk_speed": 6.5,
+        "star_gain": 0.3,
+        "disk_incl": 1.5,
+        "disk_inner": 1.8,
+        "disk_outer": 8.0,
+        "disk_opacity": 0.9,
+        "doppler_mix": 0.6,
+        "disk_beam": 2.5,
+        "disk_contrast": 1.6,
+        "disk_wind": 9.0,
+        "disk_roll": 0.35
+      },
+      "enabled": true
+    }
+  ]
+}
